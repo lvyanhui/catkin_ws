@@ -1,0 +1,208 @@
+//#include "../examples/yolo/yolo_detect-fp16.h" 
+#include "yolo_detect/yolo_detect-fp16.h" 
+#include <fstream>
+#include <iostream>
+
+#if defined(USE_OPENCV) && defined(HAS_HALF_SUPPORT)
+std::string get_object_classic(int class_id)
+{
+  std::string classic;
+  switch(class_id)
+  {
+  case 0:
+    classic = "aeroplane";
+    break;
+  case 1:
+    classic = "bicycle";
+    break;
+  case 2:
+    classic = "bird";
+    break;
+  case 3: 
+    classic = "boat";
+    break;
+  case 4:
+    classic = "bottle";
+    break;
+  case 5:
+    classic = "bus";
+    break;
+  case 6:
+    classic = "car";
+    break;
+  case 7:
+    classic = "cat";
+    break;
+  case 8:
+    classic = "chair";
+    break;
+  case 9:
+    classic = "cow";
+    break;
+  case 10: 
+    classic = "diningtable";
+    break;
+  case 11:
+    classic = "dog";
+    break;
+  case 12:
+    classic = "horse";
+    break;
+  case 13:
+    classic = "motorbike";
+    break;
+  case 14:
+    classic = "person";
+    break;
+  case 15:
+    classic = "pottedplant";
+    break;
+  case 16:
+    classic = "sheep";
+    break;
+  case 17: 
+    classic = "sofa";
+    break;
+  case 18:
+    classic = "train";
+    break;
+  case 19:
+    classic = "tvmonitor";
+    break;
+  case 20:
+    classic = "unknown";
+    break;
+  }
+  return classic;
+}
+
+int main(int argc, char** argv) {
+
+  if (argc < 3) {
+    return 1;
+  }
+  //std::vector<std::string > yolo_object_classes;
+  //yolo_object_classes.push_back("aeroplane");
+
+
+  std::streambuf* buf = std::cout.rdbuf();
+  std::ostream out(buf);
+  const string& model_file = argv[1];
+  const string& weights_file = argv[2];
+  const string& filename = argv[3];
+  const string& filenameout = argv[4];
+
+  // Initialize the network.
+  Detector detector(model_file, weights_file);
+  
+  std::vector<cv::Rect > rects;
+  std::vector<int > class_id;
+  std::vector<float > confidences;
+
+  //cv::Mat img = cv::imread(filename, -1);
+  cv::Mat img; 
+  
+  cv::VideoCapture cap;  
+  
+  if(filename == "0")
+    cap.open(0);
+  else
+    cap.open(filename);  
+  
+  if(!cap.isOpened())  
+  {  
+    out << "open video failed!" << filename <<"\n";
+    return -1;  
+  }  
+  
+  bool stop = false;  
+  int count = 0;
+  while(!stop)  
+  {
+    out << "begin detect \n";
+    img.release();  
+    cap>>img;  
+   
+    Timer detect_timer;
+    detect_timer.Start();
+    double timeUsed;
+
+    #ifdef NEW
+    rects.clear();
+    class_id.clear();
+    confidences.clear();
+    detector.Detect(img, rects, class_id, confidences);
+    #else
+    detector.Detect(img);
+    #endif
+    detect_timer.Stop();
+    timeUsed = detect_timer.MilliSeconds();
+
+    std::string message("");
+    message+=std::to_string(count)+", i-x-y-w-h :";
+    #ifdef NEW
+    //out << "rects nums: " << rects.size() << "\n";
+    for(int i=0; i<rects.size(); i++){
+      if(class_id[i] == 14)
+      {
+        message+= std::to_string(i) +", "; 
+        message+= std::to_string(rects[i].x) + ", ";
+        message+= std::to_string(rects[i].y) + ", ";
+        message+= std::to_string(rects[i].width) + ", ";
+        message+= std::to_string(rects[i].height) + ", ";
+      }
+      cv::rectangle(img, rects[i], cv::Scalar(255, 242, 35));
+      std::stringstream ss;  
+      //ss << class_id[i] << "/" << confidences[i]; 
+      ss << get_object_classic(class_id[i]) << "/" << confidences[i] << "/" << rects[i].width;  
+      std::string  text = ss.str();  
+      cv::putText(img, text, cvPoint(rects[i].x,rects[i].y+20), cv::FONT_HERSHEY_PLAIN, 1.0f, cv::Scalar(0, 255, 255)); 
+    }
+    #endif
+   
+    std::cout<<message<<std::endl;    //message是程序中处理的数据  
+    std::ofstream outfile;  
+    outfile.open("yolocal.txt",std::ofstream::out | std::ofstream::app);  //myfile.bat是存放数据的文件名  
+    if(outfile.is_open())  
+    {  
+      outfile<<message<<std::endl;    //message是程序中处理的数据  
+      outfile.close();   
+    }  
+    else  
+    {  
+      std::cout<<"不能打开文件!"<<std::endl;  
+    } 
+    out << "the first detect time=" << timeUsed <<"ms\n";
+    out << "the img channels " << img.channels() <<"ms\n";
+
+    std::string output = filenameout + "/img_"+std::to_string(count)+".jpg"; 
+    cv::imwrite(output, img);
+
+    cv::Mat dst;
+    cv::resize(img, dst, cv::Size(img.cols*1, img.rows*1), 0, 0, cv::INTER_LINEAR);
+    //imshow("dst", dst);
+
+    imshow("real", dst);  
+    cv::waitKey(-1);  
+    
+    count++;
+  }  
+  
+
+   /*img = cv::imread(filename, -1);
+  detect_timer.Start();
+  detector.Detect(img);
+  detect_timer.Stop();
+  timeUsed = detect_timer.MilliSeconds();
+  out << "the second detect time=" << timeUsed <<"ms\n";
+  */
+  
+
+  return 0;
+}
+#else
+int main(int argc, char** argv) {
+  LOG(FATAL) << "This example requires OpenCV and half floating point support."
+             << "compile with USE_OPENCV and USE_ISAAC.";
+}
+#endif  // USE_OPENCV

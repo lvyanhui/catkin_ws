@@ -1,0 +1,11 @@
+<launch>
+	<node pkg="yolo_detect" type="yolo_detect_node" name="yolo_detect" output="screen">
+            <param name="model_file" value="/home/riseauto/code/clCaffe/models/yolo/yolo416/fused_yolo_deploy.prototxt" />
+	    <param name="weights_file" value="/home/riseauto/code/clCaffe/models/yolo/yolo416/fused_yolo.caffemodel" />
+    	    <param name="image_save" value="/tmp" />
+        </node>
+        <node pkg="start" type="listener" name="listener1" output="screen">
+            <remap from="/yolo_detect/chatter" to="/start/chatter"/>
+        </node>
+
+</launch>
