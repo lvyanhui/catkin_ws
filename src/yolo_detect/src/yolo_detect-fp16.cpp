@@ -113,10 +113,13 @@ void Detector::Detect(cv::Mat& img, std::vector<cv::Rect > &rects, std::vector<i
     if (bot > h-1)
         bot = h-1;
         
+        if(classid == 14)
+        {        
         //rect.push_back(new cv::Rect(left, top, (right-left),(bot-top)));
         rects.push_back(cv::Rect(cvPoint(left,top),cvPoint(right,bot)));
         class_id.push_back(classid);
         confidences.push_back(confidence);
+        }
   }
 
 }
@@ -303,7 +306,7 @@ int main(int argc, char** argv) {
   detect_timer.Start();
   double timeUsed;
 
-  #ifdef NEW
+  #ifdef RETRIVE_MSG
   detector.Detect(img, rects, class_id, confidences);
   #else
   detector.Detect(img);
@@ -311,7 +314,7 @@ int main(int argc, char** argv) {
   detect_timer.Stop();
   timeUsed = detect_timer.MilliSeconds();
 
-  #ifdef NEW
+  #ifdef RETRIVE_MSG
   for(int i=0; i<rects.size(); i++){
     cv::rectangle(img, rects[i], cv::Scalar(255, 242, 35));
     std::stringstream ss;  

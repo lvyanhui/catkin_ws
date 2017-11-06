@@ -1,4 +1,8 @@
 #include "yolo_detect/yolo_detect-fp16.h" 
+#include "ruimou_vision/object_tracking/MultiObjectTracker.h"
+
+#include <chrono>
+#include <opencv2/highgui/highgui.hpp>
 
 #include "ros/ros.h"
 #include "std_msgs/String.h"
@@ -15,6 +19,21 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+
+
+using namespace ruimou;
+
+static double now()
+{
+    using namespace std::chrono;
+
+    system_clock::duration epoch = system_clock::now().time_since_epoch();
+
+    return std::chrono::duration_cast
+        <std::chrono::duration<double, std::ratio<1, 1>>>(epoch).count();
+}
+
+
 static const std::string OPENCV_WINDOW = "Image window";
 static std::string get_object_classic(int class_id);
 static Detector* pDetector;
@@ -25,6 +44,8 @@ class ImageConverter
   image_transport::Subscriber image_sub_;
   image_transport::Publisher image_pub_;
   ros::Publisher chatter_pub;
+  MultiObjectTracker tracker;
+  double lastTime;
 
 public:
   ImageConverter()
@@ -38,6 +59,7 @@ public:
 
     chatter_pub = nh_.advertise<yolo_detect::ObjectVec>("chatter", 1000);
     cv::namedWindow(OPENCV_WINDOW);
+    lastTime = now();
   }
 
   ~ImageConverter()
@@ -73,7 +95,22 @@ public:
       ROS_INFO("rect nums" );
       pDetector->Detect(cv_ptr->image, rects, class_id, confidences);
       ROS_INFO("rect nums-%lu", rects.size());
-      
+#if 1 
+      double curTime = now();
+      std::vector<Tracking> trackings = tracker.update(cv_ptr->image, rects, curTime);
+      for (size_t i = 0; i < trackings.size(); i++) {
+          cv::rectangle(cv_ptr->image, trackings[i].bbox, cv::Scalar(0,255, 0), 1, 1, 0);
+#if 1
+          char userDescription[255] = {0};
+          snprintf(userDescription, sizeof(userDescription), "ID:%d", trackings[i].id);
+          cv::putText(cv_ptr->image, userDescription,
+                  cvPoint(trackings[i].bbox.x, trackings[i].bbox.y),
+                  CV_FONT_HERSHEY_DUPLEX, 0.6f, CV_RGB(255, 0, 0));
+#endif
+      }
+
+#endif
+   
       yolo_detect::ObjectVec msg;
       yolo_detect::Object obj;
     
@@ -87,7 +124,8 @@ public:
         obj.rect.height = rects[i].height;
         msg.objects.push_back(obj);
 
-        ROS_INFO("classid-%d, %d", i, msg.objects[i].classid);
+        //ROS_INFO("classid-%d, %d", i, msg.objects[i].classid);
+        cv::rectangle(cv_ptr->image, rects[i], cv::Scalar(0,255, 0), 1, 1, 0);
       }
     
       chatter_pub.publish(msg);
@@ -112,6 +150,7 @@ int main(int argc, char **argv)
   std::string weights_file;
   std::string image_save;
   node_.param("model_file", mode_file, std::string("/home/riseauto/code/clCaffe/models/yolo/yolo416/fused_yolo_deploy.prototxt"));
+  //node_.param("model_file", mode_file, std::string(""));
   node_.param("weights_file", weights_file, std::string("/home/riseauto/code/clCaffe/models/yolo/yolo416/fused_yolo.caffemodel")); 
   node_.param("image_save", image_save, std::string("/tmp")); 
 

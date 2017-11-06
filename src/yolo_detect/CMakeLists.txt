@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(yolo_detect)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
@@ -14,7 +16,11 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   image_transport
   message_generation
+  #ruimou_vision
 )
+
+find_package(ruimou_vision REQUIRED
+        PATHS /usr/local/share/ruimou_vision/cmake/)
 
 #find_package(PkgConfig REQUIRED)
 #pkg_check_modules(mkl REQUIRED)
@@ -127,12 +133,13 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
 
 include_directories(include
   ${catkin_INCLUDE_DIRS}
   ~/local/include
   /opt/intel/mkl/include
+#  ${ruimou_vision_INCLUDE}
 )
 
 ## Build the USB camera library
@@ -150,6 +157,7 @@ target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
   caffe
   proto
+  ${ruimou_vision_LIBRARIES}
 )
 
 

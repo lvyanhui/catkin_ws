@@ -19,7 +19,7 @@
 using namespace caffe;  // NOLINT(build/namespaces)
 
 #define Dtype half
-#define NEW
+#define RETRIVE_MSG
 
 class Detector {
  public:
