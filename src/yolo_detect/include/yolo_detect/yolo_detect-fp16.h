@@ -23,6 +23,7 @@ using namespace caffe;  // NOLINT(build/namespaces)
 
 class Detector {
  public:
+  //Detector(){};
   Detector(const string& model_file,
            const string& weights_file);
 

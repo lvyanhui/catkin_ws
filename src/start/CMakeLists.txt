@@ -58,11 +58,10 @@ add_message_files(
 )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+add_service_files(
+  FILES
+  AddTwoInts.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -141,6 +140,8 @@ include_directories(
 # add_executable(${PROJECT_NAME}_node src/start_node.cpp)
 add_executable(talker src/talker.cpp)
 add_executable(listener src/listener.cpp)
+add_executable(add_two_ints_client src/add_two_ints_client.cpp)
+add_executable(add_two_ints_server src/add_two_ints_server.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -159,7 +160,13 @@ target_link_libraries(talker
 target_link_libraries(listener
   ${catkin_LIBRARIES}
 )
+target_link_libraries(add_two_ints_client
+  ${catkin_LIBRARIES}
+)
 
+target_link_libraries(add_two_ints_server
+  ${catkin_LIBRARIES}
+)
 #############
 ## Install ##
 #############

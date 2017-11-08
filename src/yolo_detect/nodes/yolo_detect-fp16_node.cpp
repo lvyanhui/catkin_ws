@@ -36,41 +36,48 @@ static double now()
 
 static const std::string OPENCV_WINDOW = "Image window";
 static std::string get_object_classic(int class_id);
-static Detector* pDetector;
-class ImageConverter
+
+class ImageHandler
 {
   ros::NodeHandle nh_;
   image_transport::ImageTransport it_;
   image_transport::Subscriber image_sub_;
   image_transport::Publisher image_pub_;
+  
   ros::Publisher chatter_pub;
+  
   MultiObjectTracker tracker;
-  double lastTime;
+
+  std::vector<cv::Rect > rects;
+  std::vector<int > class_id;
+  std::vector<float > confidences;
+  Detector yolo_detector;
+
+  cv_bridge::CvImagePtr cv_ptr;
 
 public:
-  ImageConverter()
-    : it_(nh_)
+  ImageHandler(const ros::NodeHandle& nh, std::string model_file, std::string weights_file):it_(nh),yolo_detector(model_file, weights_file)
+  //ImageHandler(const Detector& detector, const ros::NodeHandle& nh)
   {
     // Subscrive to input video feed and publish output video feed
-    //image_sub_ = it_.subscribe("/camera/image_raw", 1,
     image_sub_ = it_.subscribe("/usb_cam/image_raw", 1,
-      &ImageConverter::imageCb, this);
+      &ImageHandler::imageHandleCb, this);
     image_pub_ = it_.advertise("/image_converter/output_video", 1);
-
+      cv::namedWindow(OPENCV_WINDOW);
+    
+    nh_ = nh;
+    //it_ = image_transport::ImageTransport(nh);
+    //yolo_detector(detector);
     chatter_pub = nh_.advertise<yolo_detect::ObjectVec>("chatter", 1000);
-    cv::namedWindow(OPENCV_WINDOW);
-    lastTime = now();
   }
 
-  ~ImageConverter()
+  ~ImageHandler()
   {
     cv::destroyWindow(OPENCV_WINDOW);
   }
 
-  void imageCb(const sensor_msgs::ImageConstPtr& msg)
+  bool imageConvert(const sensor_msgs::ImageConstPtr& msg)
   {
-    ROS_INFO("cv_bridge info, %d", pDetector->model_file);
-    cv_bridge::CvImagePtr cv_ptr;
     try
     {
       cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
@@ -78,60 +85,81 @@ public:
     catch (cv_bridge::Exception& e)
     {
       ROS_ERROR("cv_bridge exception: %s", e.what());
-      return;
+      return false;
     }
+    return true;
+  }
+  
+  void do_yolo_detect()
+  {
+    rects.clear();
+    class_id.clear();
+    confidences.clear();
+    yolo_detector.Detect(cv_ptr->image, rects, class_id, confidences);
 
-    // Draw an example circle on the video stream
-    if (cv_ptr->image.rows > 60 && cv_ptr->image.cols > 60)
+    #if 1
+    yolo_detect::ObjectVec objmsg;
+    yolo_detect::Object obj;
+   
+    //objmsg.header = msg->header;
+    ROS_INFO("-------------time: %u", objmsg.header.seq);
+    for(int i=0; i<rects.size(); i++)
     {
-      //cv::circle(cv_ptr->image, cv::Point(50, 50), 10, CV_RGB(255,0,0));
-      
-      std::vector<cv::Rect > rects;
-      std::vector<int > class_id;
-      std::vector<float > confidences;
-      rects.clear();
-      class_id.clear();
-      confidences.clear();
-      ROS_INFO("rect nums" );
-      pDetector->Detect(cv_ptr->image, rects, class_id, confidences);
-      ROS_INFO("rect nums-%lu", rects.size());
-#if 1 
-      double curTime = now();
-      std::vector<Tracking> trackings = tracker.update(cv_ptr->image, rects, curTime);
-      for (size_t i = 0; i < trackings.size(); i++) {
-          cv::rectangle(cv_ptr->image, trackings[i].bbox, cv::Scalar(0,255, 0), 1, 1, 0);
-#if 1
-          char userDescription[255] = {0};
-          snprintf(userDescription, sizeof(userDescription), "ID:%d", trackings[i].id);
-          cv::putText(cv_ptr->image, userDescription,
+      obj.classid = class_id[i];
+      obj.confidence = confidences[i];
+      obj.rect.top = rects[i].x;
+      obj.rect.left = rects[i].y;
+      obj.rect.width = rects[i].width;
+      obj.rect.height = rects[i].height;
+      objmsg.objects.push_back(obj);
+
+      //ROS_INFO("classid-%d, %d", i, msg.objects[i].classid);
+      cv::rectangle(cv_ptr->image, rects[i], cv::Scalar(255,255, 0), 1, 1, 0);
+      char info[255] = {0};
+      snprintf(info, sizeof(info), "Conf:%f", obj.confidence);
+      cv::putText(cv_ptr->image, info,
+                  cvPoint(rects[i].x, rects[i].y+20),
+                  CV_FONT_HERSHEY_DUPLEX, 0.6f, CV_RGB(255, 0, 0));
+    }
+    chatter_pub.publish(objmsg);
+    #endif
+  }
+  
+  void do_object_track()
+  {
+    #if 1 
+    double curTime = now();
+    std::vector<Tracking> trackings = tracker.update(cv_ptr->image, rects, curTime);
+    for (size_t i = 0; i < trackings.size(); i++) 
+    {
+      if(trackings[i].state == Tracker::TRACKED)
+      {
+        cv::rectangle(cv_ptr->image, trackings[i].bbox, cv::Scalar(0,255, 0), 1, 1, 0);
+        #if 1
+        char userDescription[255] = {0};
+        snprintf(userDescription, sizeof(userDescription), "ID:%d", trackings[i].id);
+        cv::putText(cv_ptr->image, userDescription,
                   cvPoint(trackings[i].bbox.x, trackings[i].bbox.y),
                   CV_FONT_HERSHEY_DUPLEX, 0.6f, CV_RGB(255, 0, 0));
-#endif
+        #endif
       }
-
-#endif
-   
-      yolo_detect::ObjectVec msg;
-      yolo_detect::Object obj;
-    
-      for(int i=0; i<rects.size(); i++)
-      {
-        obj.classid = class_id[i];
-        obj.confidence = confidences[i];
-        obj.rect.top = rects[i].x;
-        obj.rect.left = rects[i].y;
-        obj.rect.width = rects[i].width;
-        obj.rect.height = rects[i].height;
-        msg.objects.push_back(obj);
-
-        //ROS_INFO("classid-%d, %d", i, msg.objects[i].classid);
-        cv::rectangle(cv_ptr->image, rects[i], cv::Scalar(0,255, 0), 1, 1, 0);
-      }
-    
-      chatter_pub.publish(msg);
     }
+    #endif
+  }
+  
+  void imageHandleCb(const sensor_msgs::ImageConstPtr& msg)
+  {
+    if(imageConvert(msg))
+    {
+       do_yolo_detect();
+       do_object_track();
+    }
+
+    cv::Mat dst;
+    cv::resize(cv_ptr->image, dst, cv::Size(cv_ptr->image.cols*2, cv_ptr->image.rows*2), 0, 0, cv::INTER_LINEAR);
+
     // Update GUI Window
-    cv::imshow(OPENCV_WINDOW, cv_ptr->image);
+    cv::imshow(OPENCV_WINDOW, dst);
     cv::waitKey(3);
 
     // Output modified video stream
@@ -139,61 +167,31 @@ public:
   }
 };
 
-
-
 int main(int argc, char **argv)
 {
   ros::init(argc,argv,"talker");
   
   ros::NodeHandle node_;
-  std::string mode_file;
+  ros::NodeHandle nh("~");
+  
+  std::string model_file;
   std::string weights_file;
   std::string image_save;
-  node_.param("model_file", mode_file, std::string("/home/riseauto/code/clCaffe/models/yolo/yolo416/fused_yolo_deploy.prototxt"));
-  //node_.param("model_file", mode_file, std::string(""));
-  node_.param("weights_file", weights_file, std::string("/home/riseauto/code/clCaffe/models/yolo/yolo416/fused_yolo.caffemodel")); 
-  node_.param("image_save", image_save, std::string("/tmp")); 
+  if(!nh.getParam("model_file", model_file))
+    nh.param("model_file", model_file, 
+             std::string("/home/riseauto/code/clCaffe/models/yolo/yolo416/fused_yolo_deploy.prototxt"));
+  if(!nh.getParam("weights_file", weights_file))
+    nh.param("weights_file", weights_file, 
+             std::string("/home/riseauto/code/clCaffe/models/yolo/yolo416/fused_yolo.caffemodel")); 
+  if(!nh.getParam("image_save", image_save))
+    nh.param("image_save", image_save, std::string("/tmp")); 
 
-  pDetector = new Detector(mode_file, weights_file);
-  ImageConverter ic;
+
+  //Detector yolo_detector(node_, model_file, weights_file);
   
-  //ros::Publisher chatter_pub = node_.advertise<yolo_detect::ObjectVec>("chatter", 1000);
+  ImageHandler ic(node_, model_file, weights_file);
  
-  ros::Rate loop_rate(10);
-
-  //int count = 0;
-  while (ros::ok())
-  {
-  #if 0 
-    yolo_detect::ObjectVec msg;
-    yolo_detect::Object obj;
-    
-    obj.classid = count;
-    obj.confidence = 0.9;
-    obj.rect.top = 50;
-    obj.rect.left = 50;
-    obj.rect.width = 100;
-    obj.rect.height = 100;
-    msg.objects.push_back(obj);
-
-    obj.classid = count*100;
-    obj.confidence = 0.9;
-    obj.rect.top = 40;
-    obj.rect.left = 40;
-    obj.rect.width = 100;
-    obj.rect.height = 100;
-    msg.objects.push_back(obj);
-    
-    ROS_INFO("%d, %d", msg.objects[0].classid, msg.objects[1].classid);
-  #endif
-    //chatter_pub.publish(msg);
-
-    ros::spinOnce();
-
-    loop_rate.sleep();
-
-    //++count;
-  }
+  ros::spin();
   
   return 0;
 }
